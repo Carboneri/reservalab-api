@@ -1,0 +1,192 @@
+# Partes comuns da especificação OpenAPI. Os caminhos ficam nos outros
+# arquivos desta pasta (um por tag); app/swagger.py junta tudo.
+info:
+  title: ReservaLab API
+  version: "1.0.0"
+  description: |
+    API REST para reservar salas e laboratórios do campus (estudo de caso do
+    seminário de Flask-RESTful, TDS/UTFPR).
+
+    **Como testar rotas protegidas:** faça `POST /auth/login`, copie o
+    `access_token` e cole no botão **Authorize** (sem a palavra Bearer).
+
+    Usuários do seed: `admin@reservalab.dev` / `admin123`,
+    `professor@reservalab.dev` / `prof123`, `aluno@reservalab.dev` / `aluno123`.
+servers:
+  - url: /api/v1
+tags:
+  - name: Saúde
+    description: Verificação de que a API está no ar
+  - name: Autenticação
+    description: Registro, login (JWT) e usuário logado
+  - name: Salas
+    description: Catálogo de salas e disponibilidade (escrita só para admin)
+  - name: Reservas
+    description: Reservas e regras de negócio R1–R9
+
+components:
+  securitySchemes:
+    Bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    SalaId:
+      name: sala_id
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+    ReservaId:
+      name: reserva_id
+      in: path
+      required: true
+      schema: {type: integer, minimum: 1}
+    Page:
+      name: page
+      in: query
+      schema: {type: integer, minimum: 1, default: 1}
+    PerPage:
+      name: per_page
+      in: query
+      description: Acima de 50 é reduzido a 50.
+      schema: {type: integer, minimum: 1, default: 10}
+
+  responses:
+    ErroValidacao:
+      description: Entrada inválida (formato ou regra R1–R3)
+      content:
+        application/json:
+          schema:
+            oneOf:
+              - $ref: "#/components/schemas/Erro"
+              - $ref: "#/components/schemas/ErroCampos"
+          examples:
+            campo:
+              summary: Campo inválido (reqparse)
+              value: {message: {senha: "Informe uma senha com no mínimo 6 caracteres."}}
+            regra:
+              summary: Regra de negócio
+              value: {message: "Não é possível reservar no passado."}
+    NaoAutenticado:
+      description: Token ausente, inválido ou expirado
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Erro"}
+          example: {message: "Token de acesso ausente. Envie o cabeçalho Authorization: Bearer <token>."}
+    Proibido:
+      description: Papel sem permissão
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Erro"}
+          example: {message: "Acesso negado: esta ação exige o papel admin."}
+    NaoEncontrado:
+      description: Recurso inexistente
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Erro"}
+          example: {message: "Sala 999 não encontrada."}
+    NaoJson:
+      description: Corpo enviado sem Content-Type application/json
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Erro"}
+          example: {message: "Envie o corpo da requisição como JSON (Content-Type: application/json)."}
+
+  schemas:
+    Erro:
+      type: object
+      properties:
+        message: {type: string}
+    ErroCampos:
+      type: object
+      properties:
+        message:
+          type: object
+          additionalProperties: {type: string}
+
+    Usuario:
+      type: object
+      properties:
+        id: {type: integer, example: 3}
+        nome: {type: string, example: Alice Aluna}
+        email: {type: string, example: aluno@reservalab.dev}
+        papel: {type: string, enum: [aluno, professor, admin]}
+        criado_em: {type: string, format: date-time, example: "2026-10-25T21:55:10"}
+    Token:
+      type: object
+      properties:
+        access_token: {type: string}
+        token_type: {type: string, example: Bearer}
+        expira_em_min: {type: integer, example: 60}
+
+    SalaEntrada:
+      type: object
+      required: [codigo, nome, bloco, tipo, capacidade]
+      properties:
+        codigo: {type: string, example: LAB-D301, description: Salvo em maiúsculas}
+        nome: {type: string, example: Laboratório de Robótica}
+        bloco: {type: string, example: D}
+        tipo: {type: string, enum: [laboratorio, sala_aula, auditorio]}
+        capacidade: {type: integer, minimum: 1, example: 30}
+        recursos:
+          type: array
+          items: {type: string}
+          default: []
+          example: [computadores, projetor]
+        ativa: {type: boolean, default: true}
+    Sala:
+      allOf:
+        - type: object
+          properties:
+            id: {type: integer, example: 1}
+        - $ref: "#/components/schemas/SalaEntrada"
+        - type: object
+          properties:
+            url: {type: string, example: /api/v1/salas/1}
+    SalaResumo:
+      type: object
+      properties:
+        id: {type: integer}
+        codigo: {type: string, example: LAB-B204}
+        nome: {type: string, example: Laboratório de Programação}
+
+    ReservaEntrada:
+      type: object
+      required: [sala_id, inicio, fim, participantes, finalidade]
+      properties:
+        sala_id: {type: integer, minimum: 1, example: 4}
+        inicio: {type: string, example: "2026-11-10T14:00:00", description: ISO 8601 sem fuso}
+        fim: {type: string, example: "2026-11-10T15:00:00", description: ISO 8601 sem fuso}
+        participantes: {type: integer, minimum: 1, example: 6}
+        finalidade: {type: string, maxLength: 120, example: Reunião de orientação}
+    Reserva:
+      type: object
+      properties:
+        id: {type: integer, example: 7}
+        sala: {$ref: "#/components/schemas/SalaResumo"}
+        usuario:
+          type: object
+          properties:
+            id: {type: integer}
+            nome: {type: string, example: Alice Aluna}
+        inicio: {type: string, example: "2026-11-10T14:00:00"}
+        fim: {type: string, example: "2026-11-10T15:00:00"}
+        participantes: {type: integer, example: 6}
+        finalidade: {type: string, example: Reunião de orientação}
+        status: {type: string, enum: [confirmada, cancelada]}
+        criado_em: {type: string, example: "2026-10-25T22:10:00"}
+        url: {type: string, example: /api/v1/reservas/7}
+
+    Paginacao:
+      type: object
+      properties:
+        pagina: {type: integer, example: 1}
+        por_pagina: {type: integer, example: 10}
+        total: {type: integer, example: 8}
+        paginas: {type: integer, example: 1}
+    Faixa:
+      type: object
+      properties:
+        inicio: {type: string, example: "2026-10-26T07:30:00"}
+        fim: {type: string, example: "2026-10-26T08:00:00"}

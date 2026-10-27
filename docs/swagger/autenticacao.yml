@@ -1,0 +1,78 @@
+/auth/registro:
+  post:
+    tags: [Autenticação]
+    summary: Cria uma conta (sempre com papel aluno, R11)
+    description: Um campo "papel" enviado é ignorado. O e-mail é salvo em minúsculas.
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [nome, email, senha]
+            properties:
+              nome: {type: string, example: Beatriz Conceição}
+              email: {type: string, example: bia@reservalab.dev}
+              senha: {type: string, minLength: 6, example: segredo1}
+    responses:
+      "201":
+        description: Usuário criado
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Usuario"}
+      "400": {$ref: "#/components/responses/ErroValidacao"}
+      "409":
+        description: E-mail já cadastrado
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "E-mail já cadastrado."}
+      "415": {$ref: "#/components/responses/NaoJson"}
+
+/auth/login:
+  post:
+    tags: [Autenticação]
+    summary: Troca e-mail e senha por um token JWT
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [email, senha]
+            properties:
+              email: {type: string, example: aluno@reservalab.dev}
+              senha: {type: string, example: aluno123}
+    responses:
+      "200":
+        description: Token emitido (cole o access_token no botão Authorize)
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Token"}
+      "400": {$ref: "#/components/responses/ErroValidacao"}
+      "401":
+        description: Credenciais inválidas (mensagem genérica, não revela se o e-mail existe)
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "E-mail ou senha inválidos."}
+      "415": {$ref: "#/components/responses/NaoJson"}
+
+/usuarios/me:
+  get:
+    tags: [Autenticação]
+    summary: Dados do usuário dono do token
+    security: [{Bearer: []}]
+    responses:
+      "200":
+        description: Usuário logado
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Usuario"}
+      "401": {$ref: "#/components/responses/NaoAutenticado"}
+      "404":
+        description: Usuário do token não existe mais
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "Usuário não encontrado."}

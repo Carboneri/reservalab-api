@@ -1,0 +1,149 @@
+/salas:
+  get:
+    tags: [Salas]
+    summary: Lista salas com filtros e paginação
+    parameters:
+      - {name: tipo, in: query, schema: {type: string, enum: [laboratorio, sala_aula, auditorio]}}
+      - {name: bloco, in: query, schema: {type: string}, description: Sem diferenciar maiúsculas}
+      - {name: capacidade_min, in: query, schema: {type: integer, minimum: 1}}
+      - {name: recurso, in: query, schema: {type: string}, description: "Item inteiro da lista (ex.: projetor)"}
+      - {name: ativa, in: query, schema: {type: boolean}, description: "Sem o filtro, lista ativas e inativas"}
+      - $ref: "#/components/parameters/Page"
+      - $ref: "#/components/parameters/PerPage"
+    responses:
+      "200":
+        description: Página de salas
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Paginacao"
+                - type: object
+                  properties:
+                    itens:
+                      type: array
+                      items: {$ref: "#/components/schemas/Sala"}
+      "400": {$ref: "#/components/responses/ErroValidacao"}
+  post:
+    tags: [Salas]
+    summary: Cria uma sala (admin)
+    security: [{Bearer: []}]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/SalaEntrada"}
+    responses:
+      "201":
+        description: Sala criada; o cabeçalho Location aponta para ela
+        headers:
+          Location:
+            schema: {type: string, example: /api/v1/salas/9}
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Sala"}
+      "400": {$ref: "#/components/responses/ErroValidacao"}
+      "401": {$ref: "#/components/responses/NaoAutenticado"}
+      "403": {$ref: "#/components/responses/Proibido"}
+      "409":
+        description: Código já usado por outra sala
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "Já existe uma sala com o código LAB-D301."}
+      "415": {$ref: "#/components/responses/NaoJson"}
+
+/salas/{sala_id}:
+  parameters:
+    - $ref: "#/components/parameters/SalaId"
+  get:
+    tags: [Salas]
+    summary: Detalhe de uma sala
+    responses:
+      "200":
+        description: Sala
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Sala"}
+      "404": {$ref: "#/components/responses/NaoEncontrado"}
+  put:
+    tags: [Salas]
+    summary: Substitui todos os campos editáveis (admin)
+    description: Campo opcional omitido volta ao padrão (recursos = [], ativa = true).
+    security: [{Bearer: []}]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/SalaEntrada"}
+    responses:
+      "200":
+        description: Sala atualizada
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Sala"}
+      "400": {$ref: "#/components/responses/ErroValidacao"}
+      "401": {$ref: "#/components/responses/NaoAutenticado"}
+      "403": {$ref: "#/components/responses/Proibido"}
+      "404": {$ref: "#/components/responses/NaoEncontrado"}
+      "409":
+        description: Código já usado por outra sala
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "Já existe uma sala com o código AUD-A001."}
+      "415": {$ref: "#/components/responses/NaoJson"}
+  delete:
+    tags: [Salas]
+    summary: Exclui uma sala (admin, R10)
+    description: Bloqueada se houver reserva confirmada que ainda não terminou. Reservas passadas e canceladas são apagadas junto.
+    security: [{Bearer: []}]
+    responses:
+      "204": {description: Sala excluída (sem corpo)}
+      "401": {$ref: "#/components/responses/NaoAutenticado"}
+      "403": {$ref: "#/components/responses/Proibido"}
+      "404": {$ref: "#/components/responses/NaoEncontrado"}
+      "409":
+        description: Há reservas confirmadas futuras ou em andamento (R10)
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "A sala tem reservas confirmadas que ainda não terminaram; cancele-as antes de excluir."}
+
+/salas/{sala_id}/disponibilidade:
+  get:
+    tags: [Salas]
+    summary: Faixas ocupadas e livres do dia (07:30–22:30)
+    description: Só reservas confirmadas ocupam a sala. Sala inativa não tem faixa livre (R6).
+    parameters:
+      - $ref: "#/components/parameters/SalaId"
+      - {name: data, in: query, required: true, schema: {type: string, format: date, example: "2026-10-26"}}
+    responses:
+      "200":
+        description: Disponibilidade do dia
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sala:
+                  allOf:
+                    - $ref: "#/components/schemas/SalaResumo"
+                    - type: object
+                      properties:
+                        ativa: {type: boolean}
+                        url: {type: string}
+                data: {type: string, example: "2026-10-26"}
+                ocupado:
+                  type: array
+                  items:
+                    allOf:
+                      - $ref: "#/components/schemas/Faixa"
+                      - type: object
+                        properties:
+                          reserva_id: {type: integer}
+                livre:
+                  type: array
+                  items: {$ref: "#/components/schemas/Faixa"}
+      "400": {$ref: "#/components/responses/ErroValidacao"}
+      "404": {$ref: "#/components/responses/NaoEncontrado"}

@@ -1,0 +1,124 @@
+/reservas:
+  get:
+    tags: [Reservas]
+    summary: Lista reservas (aluno e professor veem só as próprias; admin vê todas)
+    security: [{Bearer: []}]
+    parameters:
+      - {name: sala_id, in: query, schema: {type: integer, minimum: 1}}
+      - {name: data, in: query, schema: {type: string, format: date}, description: Reservas cujo início cai nesse dia}
+      - {name: status, in: query, schema: {type: string, enum: [confirmada, cancelada]}}
+      - $ref: "#/components/parameters/Page"
+      - $ref: "#/components/parameters/PerPage"
+    responses:
+      "200":
+        description: Página de reservas, ordenada por início
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/Paginacao"
+                - type: object
+                  properties:
+                    itens:
+                      type: array
+                      items: {$ref: "#/components/schemas/Reserva"}
+      "400": {$ref: "#/components/responses/ErroValidacao"}
+      "401": {$ref: "#/components/responses/NaoAutenticado"}
+  post:
+    tags: [Reservas]
+    summary: Cria uma reserva confirmada
+    description: |
+      Ordem de validação (a primeira regra violada decide):
+      formato (400) → R1 duração, R2 passado, R3 horário 07:30–22:30 (400) →
+      sala existe (404) → R6 sala inativa (422) → R7 auditório só professor/admin (403) →
+      R5 capacidade (422) → R8 aluno com no máximo 3 futuras (422) → R4 conflito (409).
+    security: [{Bearer: []}]
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ReservaEntrada"}
+    responses:
+      "201":
+        description: Reserva criada; o cabeçalho Location aponta para ela
+        headers:
+          Location:
+            schema: {type: string, example: /api/v1/reservas/7}
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Reserva"}
+      "400": {$ref: "#/components/responses/ErroValidacao"}
+      "401": {$ref: "#/components/responses/NaoAutenticado"}
+      "403":
+        description: Auditório reservado por aluno (R7)
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "Auditórios só podem ser reservados por professores ou administradores."}
+      "404": {$ref: "#/components/responses/NaoEncontrado"}
+      "409":
+        description: Conflito de horário (R4); traz a reserva conflitante
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message: {type: string}
+                conflito:
+                  type: object
+                  properties:
+                    id: {type: integer}
+                    inicio: {type: string}
+                    fim: {type: string}
+            example:
+              message: A sala já está reservada nesse horário.
+              conflito: {id: 1, inicio: "2026-10-26T08:00:00", fim: "2026-10-26T10:00:00"}
+      "415": {$ref: "#/components/responses/NaoJson"}
+      "422":
+        description: Sala inativa (R6), capacidade excedida (R5) ou limite do aluno (R8)
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "Alunos podem ter no máximo 3 reservas futuras confirmadas."}
+
+/reservas/{reserva_id}:
+  parameters:
+    - $ref: "#/components/parameters/ReservaId"
+  get:
+    tags: [Reservas]
+    summary: Detalhe de uma reserva (dono ou admin)
+    description: Reserva de outra pessoa responde 404, igual a uma inexistente.
+    security: [{Bearer: []}]
+    responses:
+      "200":
+        description: Reserva
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Reserva"}
+      "401": {$ref: "#/components/responses/NaoAutenticado"}
+      "404":
+        description: Reserva inexistente ou de outro usuário
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "Reserva 999 não encontrada."}
+  delete:
+    tags: [Reservas]
+    summary: Cancela uma reserva (R9)
+    description: Não apaga, muda o status para cancelada. Só o dono ou o admin; outros recebem 404.
+    security: [{Bearer: []}]
+    responses:
+      "204": {description: Reserva cancelada (sem corpo)}
+      "401": {$ref: "#/components/responses/NaoAutenticado"}
+      "404":
+        description: Reserva inexistente ou de outro usuário
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "Reserva 999 não encontrada."}
+      "409":
+        description: Já cancelada ou já iniciada
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/Erro"}
+            example: {message: "A reserva já está cancelada."}

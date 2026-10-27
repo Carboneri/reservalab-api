@@ -1,0 +1,10 @@
+/health:
+  get:
+    tags: [Saúde]
+    summary: Verifica se a API está no ar
+    responses:
+      "200":
+        description: API funcionando
+        content:
+          application/json:
+            example: {status: ok, versao: "1.0.0"}
